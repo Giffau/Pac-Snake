@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <style>
+        canvas {
+            border:1px solid #d3d3d3;
+            background-color: #26226d;
+        }
+        </style>
+    </head>
+        <body onload="startGame()">
+
+            <script>
+                var myGamePiece;
+                var myObstacles = [];
+                var myScore;
+                var myGameOrb;
+                var points = 0;
+                var speedModifier = 50;
+                var speedChange = 0;
+
+
+
+                //START GAME
+                function startGame() {
+                    myGameArea.start();
+                    myGamePiece = new component(Math.PI / 6, 11 * Math.PI / 6, "yellow", 30, 120, "orb1", 15, 0);
+                    myGameOrb = new component(0, 2*Math.PI, "white", getRndInt(0, myGameArea.canvas.width), getRndInt(0, myGameArea.canvas.height), "orb2", 8);
+                    myScore = new component("15px", "Consolas", "white", 5, 20, "text");
+                }
+
+
+                //CANVAS OBJECT
+                var myGameArea = {
+                    canvas : document.createElement("canvas"),
+                    start : function() {
+                        this.canvas.width = 460;
+                        this.canvas.height = 390;
+                        this.context = this.canvas.getContext("2d");
+                        document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+                        this.frameNum = 0;
+                        //call to update game every 20 milliseconds, so 50 fps
+                        this.interval = setInterval(updateGameArea, 20);
+                        window.addEventListener('mousemove', function (e) {
+                            myGameArea.x = e.pageX;
+                            myGameArea.y = e.pageY;
+                        });
+                    },
+                    clear : function() {
+                        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    },
+                    stop : function() {
+                        clearInterval(this.interval);
+                    }
+                };
+
+
+                //GENERATE COMPONENTS, being every shape on the canvas
+                function component(width, height, color, x, y, type, radius, angle) {
+                    this.width = width;
+                    this.height = height;
+                    this.color = color;
+                    this.speedX = 0;
+                    this.speedY = 0;
+                    this.x = x;
+                    this.y = y;
+                    this.type = type;
+                    this.radius = radius;
+                    this.angle = angle;
+
+                    this.newPos = function() {
+                        this.x += this.speedX;
+                        this.y += this.speedY;
+                        this.hitWall();
+                    };
+
+                    //update components when called in main update function
+                    this.update = function(){
+                        ctx = myGameArea.context;
+                        if (this.type == "text") {
+                            ctx.font = this.width + " " + this.height;
+                            ctx.fillStyle = color;
+                            ctx.fillText(this.text, this.x, this.y);
+                        } else if (this.type == "orb1") {
+                            /*this is to flip the pac man when the mouse is on his left, as well as just draw him*/
+                            ctx.save();
+                            ctx.translate(this.x, this.y);
+                            ctx.rotate(this.angle);
+                            ctx.translate(-this.x, -this.y);
+                            ctx.fillStyle = color;
+                            ctx.beginPath();
+                            ctx.moveTo(this.x, this.y);
+                            ctx.arc(this.x, this.y, this.radius, this.width, this.height);
+                            ctx.fill();
+                            ctx.closePath();
+                            ctx.restore();
+                            this.angle = 0;
+                        } else if (this.type == "orb2") {
+                            ctx.beginPath();
+                            ctx.fillStyle = color;
+                            ctx.moveTo(this.x, this.y);
+                            ctx.arc(this.x, this.y, this.radius, this.width, this.height);
+                            ctx.fill();
+                            ctx.closePath();
+                        } else if (this.type == "obstacle"){
+                            ctx.lineWidth = "10";
+                            ctx.beginPath();
+                            ctx.strokeStyle = color;
+                            ctx.rect(this.x, this.y, this.width, this.height);
+                            ctx.closePath();
+                            ctx.stroke();
+                        } else {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(this.x, this.y, this.width, this.height);
+                        }
+                    };
+
+                    //set boundaries on edges, for obstacles they will not spawn within 50 pixels of a wall
+                    this.hitWall = function() {
+                        var bottomWall = (this.type == "obstacle") ? myGameArea.canvas.height - this.height - 50 : myGameArea.canvas.height - this.radius;
+                        var topWall = (this.type == "obstacle") ? 0 : 0 + this.radius;
+                        var leftWall = (this.type == "obstacle") ? 0 : 0 + this.radius;
+                        var rightWall = (this.type == "obstacle") ? myGameArea.canvas.width - this.width - 50 : myGameArea.canvas.width - this.radius;
+                        if (this.y > bottomWall) {
+                            this.y = bottomWall;
+                            this.speedY = 0;
+                        }
+                        if (this.y < topWall) {
+                            this.y = topWall;
+                            this.speedY = 0;
+                        }
+                        if (this.x < leftWall) {
+                            this.x = leftWall;
+                            this.speedX = 0;
+                        }
+                        if (this.x > rightWall) {
+                            this.x = rightWall;
+                            this.speedX = 0;
+                        }
+                    };
+
+                    //crash detection
+                    this.crashWith = function(otherobj, situation) {
+                        var myleft = (this.type == "orb1" || this.type == "orb2") ? this.x - this.radius : this.x;
+                        var myright = (this.type == "orb1" || this.type == "orb2") ? this.x + this.radius : this.x + this.width;
+                        var mytop = (this.type == "orb1" || this.type == "orb2") ? this.y - this.radius : this.y;
+                        var mybottom = (this.type == "orb1" || this.type == "orb2") ? this.y + this.radius : this.y + this.height;
+                        var otherObjLeft = (otherobj.type == "obstacle") ? otherobj.x : otherobj.x - otherobj.radius;
+                        var otherObjRight = (otherobj.type == "obstacle") ? otherobj.x + otherobj.width : otherobj.x + otherobj.radius;
+                        var otherObjTop = (otherobj.type == "obstacle") ? otherobj.y : otherobj.y - otherobj.radius;
+                        var otherObjBottom = (otherobj.type == "obstacle") ? otherobj.y + otherobj.height : otherobj.y + otherobj.radius;
+                        var crash = true;
+                        if (situation == "objectSpawn") {
+                            if (mybottom-otherObjTop <= -5 || mytop-otherObjBottom >= 5 || myright-otherObjLeft <= -5 || myleft-otherObjRight >= 5){
+                                crash = false;
+                            }
+                        } else {
+                            if ((mybottom < otherObjTop) || (mytop > otherObjBottom) || (myright < otherObjLeft) || (myleft > otherObjRight)) {
+                                crash = false;
+                            }
+                        }
+                        return crash;
+                    };
+                }
+
+
+                //CLAMP (LIMIT) SPEED
+                function clamp(value, upperBound, lowerBound) {
+                    if (value > upperBound) {
+                        value = upperBound;
+                        return value;
+                    } else if (value < lowerBound) {
+                        value = lowerBound;
+                        return value;
+                    } else {
+                        return value;
+                    }
+                }
+
+
+
+                //UPDATE GAME
+                function updateGameArea() {
+                    var obstacleBoundX, obstacleBoundY, xDirection, yDirection, updateCondition;
+
+                    //check main crashwith obstacles
+                    updateCondition = "running";
+                    for (i = 0; i < myObstacles.length; i++) {
+                        if (myGamePiece.crashWith(myObstacles[i]) && updateCondition == "running") {
+                            myGameArea.stop;
+                            return;
+                        }
+                    }
+                    myGameArea.clear();
+
+                    updateCondition = "updating";
+                    //generate initial obstacles
+                    myGameArea.frameNum += 1;
+                    obstacleBoundX = myGameArea.canvas.width;
+                    obstacleBoundY = myGameArea.canvas.height;
+                    if (myGameArea.frameNum == 1 || myGameArea.frameNum < 4 && everyinterval(1)) {
+                        myObstacles.push(new component(getRndInt(20, 150), getRndInt(20, 150), "blue", getRndInt(50, obstacleBoundX), getRndInt(50, obstacleBoundY), "obstacle"));
+                        i = myGameArea.frameNum - 1;
+                        if (myObstacles[i].crashWith(myGamePiece, "objectSpawn") && updateCondition == "updating" || myObstacles[i].crashWith(myGameOrb, "objectSpawn")) {
+                            myObstacles[i].x = getRndInt(50, obstacleBoundX);
+                            myObstacles[i].y = getRndInt(50, obstacleBoundY);
+                        }
+                    }
+                    for (i = 0; i < myObstacles.length; i++) {
+                        myObstacles[i].hitWall();
+                        for (j = 0; j < myObstacles.length; j++) {
+                            if (i != j) {
+                                if (myObstacles[i].crashWith(myObstacles[j])) {
+                                    myObstacles[i].x = getRndInt(50, obstacleBoundX);
+                                    myObstacles[i].y = getRndInt(50, obstacleBoundY);
+                                    j = 0;
+                                }
+                            }
+                        }
+                        myObstacles[i].update();
+                    }
+
+                    //count points and update score, along with everything else
+                    if (myGamePiece.crashWith(myGameOrb)) {
+                        myGameOrb.x = getRndInt(0, myGameArea.canvas.width);
+                        myGameOrb.y = getRndInt(0, myGameArea.canvas.height);
+                        myGameOrb.update();
+                        points += 1;
+                        speedChange = 2;
+                        /*increments*/
+                        if (points % 5 == 0) {
+                            myObstacles.push(new component(getRndInt(20, 150), getRndInt(20, 150), "blue", getRndInt(50, obstacleBoundX), getRndInt(50, obstacleBoundY), "obstacle"));
+                        }
+                        /*update obstacles*/
+                        for (i = 0; i < myObstacles.length; i++) {
+                            myObstacles[i].x = getRndInt(50, obstacleBoundX);
+                            myObstacles[i].y = getRndInt(50, obstacleBoundY);
+                            myObstacles[i].hitWall();
+                            if (myObstacles[i].crashWith(myGamePiece, "objectSpawn") && updateCondition == "updating" || myObstacles[i].crashWith(myGameOrb, "objectSpawn")) {
+                                myObstacles[i].x = getRndInt(50, obstacleBoundX);
+                                myObstacles[i].y = getRndInt(50, obstacleBoundY);
+                            }
+                            for (j = 0; j < myObstacles.length; j++) {
+                                if (i != j) {
+                                    if (myObstacles[i].crashWith(myObstacles[j], "objectSpawn")) {
+                                        myObstacles[i].x = getRndInt(50, obstacleBoundX);
+                                        myObstacles[i].y = getRndInt(50, obstacleBoundY);
+                                        j = 0;
+                                    }
+                                }
+                            }
+                            myObstacles[i].update();
+                        }
+                        /**/
+                    }
+                    myScore.text = "SCORE: " + points;
+                    myScore.update();
+
+
+                    //main character movement
+                    if (everyinterval(30)) {
+                        myGamePiece.width = Math.PI / 6;
+                        myGamePiece.height = 11 * Math.PI / 6;
+                    } else if (everyinterval(15)) {
+                        myGamePiece.width = 0;
+                        myGamePiece.height = 2 * Math.PI;
+                    }
+                    if (myGameArea.x < myGamePiece.x) {
+                        myGamePiece.angle = Math.PI;
+                    }
+
+                    xDirection = clamp(myGamePiece.x - Math.PI * myGamePiece.radius - myGameArea.x, -60, 60);
+                    yDirection = clamp(myGamePiece.y - Math.PI * myGamePiece.radius - myGameArea.y, -60, 60);
+                    speedModifier = clamp(speedModifier - speedChange, 50, 20);
+                    speedChange = 0;
+
+                    if (myGameArea.x && myGameArea.y) {
+                        myGamePiece.speedX = xDirection / speedModifier;
+                        myGamePiece.speedY = yDirection / speedModifier;
+                    }
+
+                    myGamePiece.newPos();
+                    myGamePiece.update();
+                    myGameOrb.update();
+
+                }										
+
+
+                //COUNT FRAMES
+                function everyinterval(n) {
+                    if ((myGameArea.frameNum / n) % 1 == 0)
+                        return true;
+                    return false;
+                }
+
+
+                //RNG
+                function getRndInt(min, max) {
+                    return Math.floor(Math.random() * (max - min + 1) ) + min;
+                }
+
+
+            </script>
+
+        </body>
+</html>
